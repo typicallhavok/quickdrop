@@ -2,24 +2,29 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::thread::LocalKey;
 
+use crate::crypto::derive_session_key;
 use crate::protocol::{
-    HEADER_SIZE, IDENTITY_CHALLENGE, IDENTITY_HELLO, IDENTITY_PROOF, make_header, parse_header,
+    ACCEPT, HEADER_SIZE, IDENTITY_CHALLENGE, IDENTITY_HELLO, IDENTITY_PROOF, REJECT, make_header,
+    parse_header,
 };
 
-use crate::identity::{NONCE_SIZE, State, Store, device_id, generate_nonce};
+use crate::identity::{NONCE_SIZE, State, Store, generate_nonce, is_trusted};
 
-struct HandshakeContext {
-    store: Store,
-    store_path: String,
+use crate::protocol::{read_message, write_message};
+
+struct HandshakeContext<'a> {
+    store: &'a mut Store,
+    store_path: &'a str,
     state: State,
     nonce: Option<[u8; NONCE_SIZE]>,
     peer_public_key: Option<Vec<u8>>,
     peer_name: Option<String>,
 }
 
-impl HandshakeContext {
-    fn new(store: Store, store_path: String) -> Self {
+impl<'a> HandshakeContext<'a> {
+    fn new(store: &'a mut Store, store_path: &'a str) -> Self {
         Self {
             store,
             store_path,
@@ -31,41 +36,49 @@ impl HandshakeContext {
     }
 }
 
-pub fn run_handshake(stream: &mut TcpStream, store: Store, store_path: String) -> io::Result<()> {
+pub fn run_handshake<'a>(
+    stream: &mut TcpStream,
+    store: &'a mut Store,
+    store_path: &'a str,
+    local_public_key: &[u8; 32],
+) -> io::Result<[u8; 32]> {
     let mut ctx = HandshakeContext::new(store, store_path);
 
-    // 1. Read IDENTITY_HELLO
     let (msg_type, payload) = read_message(stream)?;
     handle_identity_hello(&mut ctx, msg_type, &payload)?;
 
-    // 2. Send challenge
     send_challenge(&mut ctx, stream)?;
 
-    // 3. Read IDENTITY_PROOF
     let (msg_type, payload) = read_message(stream)?;
-    handle_identity_proof(&mut ctx, msg_type, &payload)?;
+    handle_identity_proof(stream, &mut ctx, msg_type, &payload)?;
 
-    // 4–6 (accept / reject) handled later
-    Ok(())
-}
+    if ctx.state != State::Authenticated {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "permission denied",
+        ));
+    }
 
-fn read_message(stream: &mut TcpStream) -> io::Result<(u8, Vec<u8>)> {
-    let mut header = [0u8; HEADER_SIZE];
-    stream.read_exact(&mut header)?;
+    let peer_vec = ctx
+        .peer_public_key
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no public key"))?;
+    let public_key_bytes = peer_vec.as_slice();
+    let peer_key_check: &[u8; 32] = public_key_bytes
+        .try_into()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid public key"))?;
+    let peer_key = peer_key_check;
+    
+    let nonce = ctx
+        .nonce
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing nonce"))?;
 
-    let (msg_type, payload_len) = parse_header(header);
+    let session_key = derive_session_key(nonce, local_public_key, peer_key);
 
-    let mut payload = vec![0u8; payload_len as usize];
-    stream.read_exact(&mut payload)?;
+    ctx.nonce = None;
 
-    Ok((msg_type, payload))
-}
-
-fn write_message(stream: &mut TcpStream, msg_type: u8, payload: &[u8]) -> io::Result<()> {
-    let header = make_header(msg_type, payload.len() as u64);
-    stream.write_all(&header)?;
-    stream.write_all(payload)?;
-    Ok(())
+    Ok(session_key)
 }
 
 fn handle_identity_hello(
@@ -104,6 +117,7 @@ fn send_challenge(ctx: &mut HandshakeContext, stream: &mut TcpStream) -> io::Res
 }
 
 fn handle_identity_proof(
+    stream: &mut TcpStream,
     ctx: &mut HandshakeContext,
     msg_type: u8,
     payload: &[u8],
@@ -115,10 +129,18 @@ fn handle_identity_proof(
         ));
     }
 
-    let signature = parse_identity_proof(payload)?;
+    if payload.len() != 64 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid signature",
+        ));
+    }
+
+    let signature = payload;
 
     let nonce = ctx
         .nonce
+        .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing nonce"))?;
 
     let public_key = ctx
@@ -126,42 +148,20 @@ fn handle_identity_proof(
         .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing public key"))?;
 
-    if signature.len() != 64 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid signature",
-        ));
-    }
-
-    if !verify_signature(public_key, &nonce, signature) {
+    if !verify_signature(public_key, nonce, signature) {
+        send_reject(stream)?;
+        ctx.state = State::Rejected;
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "invalid signature",
+            "permission denied",
         ));
     }
 
     ctx.state = State::Authenticated;
+    let trusted = is_trusted(ctx.store, public_key);
+    send_accept(stream, trusted)?;
+
     Ok(())
-}
-
-fn parse_identity_proof(payload: &[u8]) -> io::Result<&[u8]> {
-    if payload.len() < 2 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid payload",
-        ));
-    }
-
-    let sig_len = u16::from_be_bytes([payload[0], payload[1]]) as usize;
-
-    if payload.len() != 2 + sig_len {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid signature length",
-        ));
-    }
-
-    Ok(&payload[2..])
 }
 
 fn verify_signature(public_key: &[u8], nonce: &[u8], signature: &[u8]) -> bool {
@@ -170,20 +170,18 @@ fn verify_signature(public_key: &[u8], nonce: &[u8], signature: &[u8]) -> bool {
         Err(_) => return false,
     };
 
-    let sig: Signature = Signature::from_bytes(
-        match signature.try_into() {
-            Ok(s) => s,
-            Err(_) => return false,
-        }
-    );
+    let sig: Signature = Signature::from_bytes(match signature.try_into() {
+        Ok(s) => s,
+        Err(_) => return false,
+    });
     let mut message = Vec::with_capacity(64);
     message.extend_from_slice(nonce);
-    let hash= Sha256::digest(pk);
+    let hash = Sha256::digest(pk);
     message.extend_from_slice(&hash);
     let verifying_key = VerifyingKey::from_bytes(pk);
     match verifying_key {
         Ok(verifying_key) => verifying_key.verify(&message, &sig).is_ok(),
-        Err(_) => return false
+        Err(_) => return false,
     }
 }
 
@@ -224,4 +222,13 @@ fn parse_identity_hello(payload: &[u8]) -> io::Result<(Vec<u8>, String)> {
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf-8 name"))?;
 
     Ok((public_key, name))
+}
+
+fn send_accept(stream: &mut TcpStream, auto_send: bool) -> io::Result<()> {
+    let payload = [auto_send as u8];
+    write_message(stream, ACCEPT, &payload)
+}
+
+fn send_reject(stream: &mut TcpStream) -> io::Result<()> {
+    write_message(stream, REJECT, &[])
 }

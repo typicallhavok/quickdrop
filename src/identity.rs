@@ -1,4 +1,5 @@
 use base64::{Engine as _, engine::general_purpose};
+use hex;
 use rand::Rng;
 use rand::rng;
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,6 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use hex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
