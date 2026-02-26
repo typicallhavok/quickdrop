@@ -1,7 +1,6 @@
 use base64::{Engine as _, engine::general_purpose};
 use hex;
-use rand::Rng;
-use rand::rng;
+use rand::{Rng, thread_rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -32,12 +31,14 @@ pub const NONCE_SIZE: usize = 32;
 
 pub fn generate_nonce() -> [u8; NONCE_SIZE] {
     let mut nonce = [0u8; NONCE_SIZE];
-    rng().fill(&mut nonce);
+    
+    thread_rng().fill(&mut nonce);
     nonce
 }
 
 pub fn device_id(public_key: &[u8]) -> String {
     let hash = Sha256::digest(public_key);
+
     hex::encode(hash)
 }
 
@@ -45,6 +46,7 @@ pub fn load_store(path: &str) -> Store {
     let empty = Store {
         devices: HashMap::new(),
     };
+
     if let Ok(mut file) = File::open(path) {
         let mut contents = String::new();
         if file.read_to_string(&mut contents).is_ok() {
@@ -53,6 +55,7 @@ pub fn load_store(path: &str) -> Store {
             }
         }
     }
+
     empty
 }
 

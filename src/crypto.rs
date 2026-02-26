@@ -6,15 +6,18 @@ use hkdf::Hkdf;
 use sha2::Sha256;
 use std::io;
 
-pub fn derive_session_key(nonce: &[u8; 32], our_pub: &[u8; 32], peer_pub: &[u8; 32]) -> [u8; 32] {
+use crate::identity::NONCE_SIZE;
+
+pub fn derive_session_key(server_nonce: &[u8; NONCE_SIZE], client_nonce: &[u8; NONCE_SIZE], our_pub: &[u8; 32], peer_pub: &[u8; 32]) -> [u8; 32] {
     let (pk1, pk2) = if our_pub <= peer_pub {
         (our_pub, peer_pub)
     } else {
         (peer_pub, our_pub)
     };
 
-    let mut ikm = Vec::with_capacity(32 + 32 + 32);
-    ikm.extend_from_slice(nonce);
+    let mut ikm = Vec::with_capacity(32 + 32 + 32 + 32);
+    ikm.extend_from_slice(server_nonce);
+    ikm.extend_from_slice(client_nonce);
     ikm.extend_from_slice(pk1);
     ikm.extend_from_slice(pk2);
 
@@ -25,31 +28,27 @@ pub fn derive_session_key(nonce: &[u8; 32], our_pub: &[u8; 32], peer_pub: &[u8; 
     key
 }
 
-fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Vec<u8> {
+pub fn encrypt(key: &[u8; 32], counter:u64, plaintext: &[u8]) -> Vec<u8> {
     let cipher = Aes256Gcm::new_from_slice(key).unwrap();
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let mut nonce_bytes = [0u8; 12];
+    nonce_bytes[4..].copy_from_slice(&counter.to_be_bytes());
+    let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
         .expect("encryption failed");
-    let mut out = Vec::with_capacity(12 + ciphertext.len());
+    let mut out = Vec::with_capacity(ciphertext.len());
 
-    out.extend_from_slice(&nonce);
     out.extend_from_slice(&ciphertext);
     out
 }
 
-fn decrypt(key: &[u8; 32], data: &[u8]) -> io::Result<Vec<u8>> {
-    if data.len() < 12 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "ciphertext too short",
-        ));
-    }
+pub fn decrypt(key: &[u8; 32], counter:u64, data: &[u8]) -> io::Result<Vec<u8>> {
 
     let cipher = Aes256Gcm::new_from_slice(key).unwrap();
-
-    let (nonce_bytes, ciphertext) = data.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let mut nonce_bytes = [0u8; 12];
+    nonce_bytes[4..].copy_from_slice(&counter.to_be_bytes());
+    let ciphertext = data;
+    let nonce = Nonce::from_slice(&nonce_bytes);
 
     cipher
         .decrypt(nonce, ciphertext)
