@@ -2,10 +2,10 @@ use crate::protocol::{FILE_BEGIN, FILE_CHUNK, FILE_END, SecureChannel, secure_re
 use std::f32::consts::E;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use tokio::net::TcpStream;
 use std::{io, path::Path};
 
-pub fn send_file(
+pub async fn send_file(
     stream: &mut TcpStream,
     channel: &mut SecureChannel,
     path: &Path,
@@ -23,7 +23,7 @@ pub fn send_file(
     payload.extend_from_slice(&(file_name.len() as u16).to_be_bytes());
     payload.extend_from_slice(file_name);
 
-    secure_write(stream, channel, FILE_BEGIN, &payload)?;
+    secure_write(stream, channel, FILE_BEGIN, &payload).await?;
 
     let mut file = File::open(path)?;
     let mut buf = [0u8; 16384];
@@ -33,21 +33,21 @@ pub fn send_file(
         if bytes_read == 0 {
             break;
         }
-        secure_write(stream, channel, FILE_CHUNK, &buf[..bytes_read])?;
+        secure_write(stream, channel, FILE_CHUNK, &buf[..bytes_read]).await?;
     }
-    secure_write(stream, channel, FILE_END, &[])?;
+    secure_write(stream, channel, FILE_END, &[]).await?;
 
     Ok(())
 }
 
-pub fn receive_file(
+pub async fn receive_file(
     stream: &mut TcpStream,
     channel: &mut SecureChannel,
     path: &Path,
     expected_size: u64,
     expected_name: &str,
 ) -> io::Result<()> {
-    let (msg_type, payload) = match secure_read(stream, channel) {
+    let (msg_type, payload) = match secure_read(stream, channel).await {
         Ok((msg_type, payload)) => (msg_type, payload),
         Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
         Err(e) => return Err(e),
@@ -97,7 +97,7 @@ pub fn receive_file(
     let mut remaining = file_size;
 
     while remaining > 0 {
-        let (msg_type, payload) = secure_read(stream, channel)?;
+        let (msg_type, payload) = secure_read(stream, channel).await?;
         if msg_type != FILE_CHUNK || payload.len() > remaining as usize || payload.len() == 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid data"));
         }
@@ -106,7 +106,7 @@ pub fn receive_file(
         file.write_all(&payload)?;
     }
 
-    let (msg_type, payload) = secure_read(stream, channel)?;
+    let (msg_type, payload) = secure_read(stream, channel).await?;
 
     if msg_type == FILE_END
         && payload.is_empty()

@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -31,7 +32,7 @@ pub const NONCE_SIZE: usize = 32;
 
 pub fn generate_nonce() -> [u8; NONCE_SIZE] {
     let mut nonce = [0u8; NONCE_SIZE];
-    
+
     thread_rng().fill(&mut nonce);
     nonce
 }
@@ -42,16 +43,16 @@ pub fn device_id(public_key: &[u8]) -> String {
     hex::encode(hash)
 }
 
-pub fn load_store(path: &str) -> Store {
-    let empty = Store {
+pub fn load_store(path: &str) -> Arc<Mutex<Store>> {
+    let empty = Arc::new(Mutex::new(Store {
         devices: HashMap::new(),
-    };
+    }));
 
     if let Ok(mut file) = File::open(path) {
         let mut contents = String::new();
         if file.read_to_string(&mut contents).is_ok() {
             if let Ok(store) = serde_json::from_str::<Store>(&contents) {
-                return store;
+                return Arc::new(Mutex::new(store));
             }
         }
     }
@@ -59,18 +60,28 @@ pub fn load_store(path: &str) -> Store {
     empty
 }
 
-pub fn is_trusted(store: &Store, public_key: &[u8]) -> bool {
+pub fn is_trusted(shared_store: Arc<Mutex<Store>>, public_key: &[u8]) -> bool {
+    let store = shared_store.lock().unwrap();
     store.devices.contains_key(&device_id(public_key))
 }
 
-pub fn add_trusted(store: &mut Store, public_key: &[u8], name: &str, path: &str) {
-    if !is_trusted(store, public_key) {
+pub fn add_trusted(
+    shared_store: &Arc<Mutex<Store>>,
+    public_key: &[u8],
+    name: &str,
+    path: &str,
+) {
+    let mut store = shared_store.lock().unwrap();
+
+    if !store.devices.contains_key(&device_id(public_key)) {
         let device = TrustedDevice {
             name: name.to_string(),
             public_key: general_purpose::STANDARD.encode(public_key),
         };
+
         store.devices.insert(device_id(public_key), device);
-        if let Ok(json) = serde_json::to_string_pretty(&store) {
+
+        if let Ok(json) = serde_json::to_string_pretty(&*store) {
             let _ = std::fs::write(path, json);
         }
     }

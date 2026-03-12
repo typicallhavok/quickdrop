@@ -6,7 +6,8 @@ use crate::{
     },
     transfer::receive_file,
 };
-use std::{io, net::TcpStream, path::Path};
+use std::{io, path::Path, sync::{Arc, Mutex}};
+use tokio::net::TcpStream;
 
 #[derive(PartialEq)]
 enum IncomingState {
@@ -17,16 +18,23 @@ enum IncomingState {
     },
 }
 
-fn run_session(
+pub async fn run_session(
     stream: &mut TcpStream,
     channel: &mut SecureChannel,
-    store: &Store,
+    store: Arc<Mutex<Store>>,
     download_dir: &Path,
     peer_public_key: [u8; 32],
 ) -> io::Result<()> {
     let mut state: IncomingState = IncomingState::Idle;
     loop {
-        let (msg_type, payload) = secure_read(stream, channel)?;
+        let (msg_type, payload) = match secure_read(stream, channel).await {
+            Ok(res) => res,
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                println!("Peer disconnected.");
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        };
         if msg_type == FILE_OFFER && payload.len() >= 10 && state == IncomingState::Idle {
             let file_size =
                 u64::from_be_bytes(payload[..8].try_into().map_err(|_| {
@@ -51,15 +59,15 @@ fn run_session(
 
             println!("{} {}", file_size, file_name); // ADD UI HERE
 
-            if is_trusted(&store, &peer_public_key) {
+            if true { // change to is_trusted(&store, &peer_public_key) later
                 state = IncomingState::AwaitingUpload {
                     expected_size: file_size,
                     expected_name: file_name.clone(),
                 };
-                send_offer_accept(stream, channel)?;
+                send_offer_accept(stream, channel).await?;
             } else {
                 state = IncomingState::Idle;
-                send_offer_reject(stream, channel)?;
+                send_offer_reject(stream, channel).await?;
             }
         } else if msg_type == FILE_UPLOAD {
             if let IncomingState::AwaitingUpload {
@@ -67,7 +75,7 @@ fn run_session(
                 expected_name,
             } = &state
             {
-                receive_file(stream, channel, download_dir, *expected_size, expected_name)?;
+                receive_file(stream, channel, download_dir, *expected_size, expected_name).await?;
                 state = IncomingState::Idle;
             } else {
                 return Err(io::Error::new(
@@ -81,12 +89,12 @@ fn run_session(
     }
 }
 
-fn send_offer_accept(stream: &mut TcpStream, channel: &mut SecureChannel) -> io::Result<()> {
-    secure_write(stream, channel, OFFER_ACCEPT, &[])?;
+async fn send_offer_accept(stream: &mut TcpStream, channel: &mut SecureChannel) -> io::Result<()> {
+    secure_write(stream, channel, OFFER_ACCEPT, &[]).await?;
     Ok(())
 }
 
-fn send_offer_reject(stream: &mut TcpStream, channel: &mut SecureChannel) -> io::Result<()> {
-    secure_write(stream, channel, OFFER_REJECT, &[])?;
+async fn send_offer_reject(stream: &mut TcpStream, channel: &mut SecureChannel) -> io::Result<()> {
+    secure_write(stream, channel, OFFER_REJECT, &[]).await?;
     Ok(())
 }

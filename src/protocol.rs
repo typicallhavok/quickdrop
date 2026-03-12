@@ -1,5 +1,7 @@
-use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::io;
+use tokio::net::TcpStream;
+use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncReadExt;
 
 use crate::crypto::{decrypt, encrypt};
 
@@ -52,28 +54,28 @@ pub fn parse_header(header: [u8; HEADER_SIZE]) -> (u8, u64) {
     (msg_type, payload_len)
 }
 
-pub fn write_message(stream: &mut TcpStream, msg_type: u8, payload: &[u8]) -> io::Result<()> {
+pub async fn write_message(stream: &mut TcpStream, msg_type: u8, payload: &[u8]) -> io::Result<()> {
     let header = make_header(msg_type, payload.len() as u64);
 
-    stream.write_all(&header)?;
-    stream.write_all(payload)?;
+    stream.write_all(&header).await?;
+    stream.write_all(payload).await?;
     Ok(())
 }
 
-pub fn read_message(stream: &mut TcpStream) -> io::Result<(u8, Vec<u8>)> {
+pub async fn read_message(stream: &mut TcpStream) -> io::Result<(u8, Vec<u8>)> {
     let mut header = [0u8; HEADER_SIZE];
 
-    stream.read_exact(&mut header)?;
+    stream.read_exact(&mut header).await?;
 
     let (msg_type, payload_len) = parse_header(header);
     let mut payload = vec![0u8; payload_len as usize];
 
-    stream.read_exact(&mut payload)?;
+    stream.read_exact(&mut payload).await?;
 
     Ok((msg_type, payload))
 }
 
-pub fn secure_write(
+pub async fn secure_write(
     stream: &mut TcpStream,
     channel: &mut SecureChannel,
     msg_type: u8,
@@ -101,17 +103,17 @@ pub fn secure_write(
 
     message.extend_from_slice(&len.to_be_bytes());
     message.extend_from_slice(&encrypted_payload);
-    stream.write_all(&message)?;
+    stream.write_all(&message).await?;
 
     Ok(())
 }
 
-pub fn secure_read(
+pub async fn secure_read(
     stream: &mut TcpStream,
     channel: &mut SecureChannel,
 ) -> io::Result<(u8, Vec<u8>)> {
     let mut len = [0u8; 4];
-    stream.read_exact(&mut len)?;
+    stream.read_exact(&mut len).await?;
 
     let frame_len = u32::from_be_bytes(len);
 
@@ -124,7 +126,7 @@ pub fn secure_read(
     }
 
     let mut message = vec![0u8; frame_len as usize];
-    stream.read_exact(&mut message)?;
+    stream.read_exact(&mut message).await?;
 
     let decrypted_payload = decrypt(&channel.key, channel.recv_ctr, &message)?;
 
