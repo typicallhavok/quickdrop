@@ -5,10 +5,7 @@ use std::sync::{Arc, Mutex};
 use tokio::net::TcpStream;
 
 use crate::crypto::derive_session_key;
-use crate::protocol::{
-    ACCEPT, HEADER_SIZE, IDENTITY_CHALLENGE, IDENTITY_HELLO, IDENTITY_PROOF, OFFER_ACCEPT,
-    OFFER_REJECT, REJECT, make_header, parse_header,
-};
+use crate::protocol::{ACCEPT, IDENTITY_CHALLENGE, IDENTITY_HELLO, IDENTITY_PROOF, REJECT};
 
 use crate::identity::{NONCE_SIZE, State, Store, generate_nonce, is_trusted};
 
@@ -16,7 +13,6 @@ use crate::protocol::{read_message, write_message};
 
 pub struct HandshakeContext<'a> {
     store: Arc<Mutex<Store>>,
-    store_path: &'a str,
     state: State,
     nonce: Option<[u8; NONCE_SIZE]>,
     client_nonce: Option<[u8; NONCE_SIZE]>,
@@ -27,15 +23,9 @@ pub struct HandshakeContext<'a> {
 }
 
 impl<'a> HandshakeContext<'a> {
-    pub fn new(
-        store: Arc<Mutex<Store>>,
-        store_path: &'a str,
-        local_public_key: [u8; 32],
-        local_name: &'a str,
-    ) -> Self {
+    pub fn new(store: Arc<Mutex<Store>>, local_public_key: [u8; 32], local_name: &'a str) -> Self {
         Self {
             store,
-            store_path,
             state: State::New,
             nonce: None,
             client_nonce: None,
@@ -50,11 +40,11 @@ impl<'a> HandshakeContext<'a> {
 pub async fn run_handshake<'a>(
     stream: &mut TcpStream,
     store: Arc<Mutex<Store>>,
-    store_path: &'a str,
+    _store_path: &'a str,
     local_public_key: &[u8; 32],
     local_name: &str,
-) -> io::Result<([u8; 32],[u8; 32])> {
-    let mut ctx = HandshakeContext::new(store, store_path, *local_public_key, local_name);
+) -> io::Result<([u8; 32], [u8; 32], String)> {
+    let mut ctx = HandshakeContext::new(store, *local_public_key, local_name);
 
     let (msg_type, payload) = read_message(stream).await?;
 
@@ -83,6 +73,11 @@ pub async fn run_handshake<'a>(
         .try_into()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid public key"))?;
 
+    let peer_name = ctx
+        .peer_name
+        .clone()
+        .unwrap_or_else(|| "Unknown".to_string());
+
     let peer_key = peer_key_check;
     let server_nonce = ctx
         .nonce
@@ -97,7 +92,7 @@ pub async fn run_handshake<'a>(
         derive_session_key(server_nonce, client_nonce, &ctx.local_public_key, peer_key);
 
     ctx.nonce = None;
-    Ok((session_key, *peer_key))
+    Ok((session_key, *peer_key, peer_name))
 }
 
 pub async fn run_client_handshake<'a>(
@@ -105,12 +100,11 @@ pub async fn run_client_handshake<'a>(
     signing_key: &SigningKey,
     peer_name: &str,
     store: Arc<std::sync::Mutex<Store>>,
-    store_path: &'a str,
+    _store_path: &'a str,
     local_public_key: &[u8; 32],
     local_name: &str,
 ) -> io::Result<[u8; 32]> {
-
-    let mut ctx = HandshakeContext::new(store, store_path, *local_public_key, local_name);
+    let mut ctx = HandshakeContext::new(store, *local_public_key, local_name);
 
     let client_nonce = generate_nonce();
     let mut payload = Vec::with_capacity(NONCE_SIZE + 32 + peer_name.len());
@@ -188,7 +182,10 @@ fn handle_identity_hello(
     Ok(())
 }
 
-async fn send_challenge<'a> (ctx: &mut HandshakeContext<'a>, stream: &mut TcpStream) -> io::Result<()> {
+async fn send_challenge<'a>(
+    ctx: &mut HandshakeContext<'a>,
+    stream: &mut TcpStream,
+) -> io::Result<()> {
     let nonce = generate_nonce();
     let public_key = ctx
         .peer_public_key
@@ -207,7 +204,7 @@ async fn send_challenge<'a> (ctx: &mut HandshakeContext<'a>, stream: &mut TcpStr
     Ok(())
 }
 
-async fn handle_identity_proof<'a> (
+async fn handle_identity_proof<'a>(
     stream: &mut TcpStream,
     ctx: &mut HandshakeContext<'a>,
     msg_type: u8,

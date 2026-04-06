@@ -1,0 +1,173 @@
+.shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Body ── */
+  .body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--side-w);
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 10px 8px 0;
+  }
+
+  .nav-list {
+    list-style: none;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--r-sm);
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 500;
+    transition:
+      color 0.14s,
+      background 0.14s;
+    position: relative;
+  }
+  .nav-icon {
+    width: 17px;
+    height: 17px;
+    flex-shrink: 0;
+  }
+  .nav-link:hover {
+    color: var(--text);
+    background: var(--surface-2);
+  }
+  .nav-link.active {
+    color: var(--text);
+    background: var(--accent-muted);
+  }
+  .nav-link.active .nav-icon {
+    color: var(--accent);
+  }
+
+  .nav-badge {
+    margin-left: auto;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 100px;
+    min-width: 18px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  /* ── Sidebar footer ── */
+  .sidebar-foot {
+    border-top: 1px solid var(--border);
+    padding: 10px 4px 12px;
+    margin-top: 8px;
+  }
+
+  .device-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: var(--r-sm);
+  }
+
+  .device-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+  }
+
+  .device-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .meta-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .meta-ip {
+    font-size: 11px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* ── Content ── */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg);
+  }
+
+  /* ── Global Offers ── */
+  .global-offers {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 9999;
+    max-width: 360px;
+    width: 100%;
+  }
+
+  .offer-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--warning);
+    border-radius: var(--r);
+  }
+
+  .offer-card.popup-shadow {
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.4);
+  }
+
+  .offer-icon {
+    width: 34px; height: 34px;
+    background: var(--warning-m);
+    border-radius: var(--r-sm);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--warning); flex-shrink: 0;
+  }
+  .offer-icon svg { width: 18px; height: 18px; }
+
+  .offer-info { flex: 1; min-width: 0; }
+  .offer-name { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .offer-meta { font-size: 12px; color: var(--text-2); }
+  .offer-actions { display: flex; gap: 8px; flex-shrink: 0; }

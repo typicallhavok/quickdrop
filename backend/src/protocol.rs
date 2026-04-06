@@ -1,7 +1,8 @@
 use std::io;
-use tokio::net::TcpStream;
-use tokio::io::AsyncWriteExt;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+use uuid::uuid;
 
 use crate::crypto::{decrypt, encrypt};
 
@@ -22,6 +23,15 @@ pub const FILE_END: u8 = 0x22;
 pub const FILE_OFFER: u8 = 0x23;
 pub const OFFER_ACCEPT: u8 = 0x24;
 pub const OFFER_REJECT: u8 = 0x25;
+
+pub const FILE_CHUNK_SIZE: usize = 4 * 1024 * 1024;
+
+pub const BLE_UUID: u128 = uuid!("00001d09-0000-1000-8000-00805f9b34fb").as_u128();
+pub const WIFI_INFO_UUID: u128 = uuid!("00001d0a-0000-1000-8000-00805f9b34fb").as_u128();
+pub const WIFIDIRECT_INFO_UUID: u128 = uuid!("00001d0b-0000-1000-8000-00805f9b34fb").as_u128();
+
+pub const TCP_PORT: u16 = 55432; // file transfer (TCP)
+pub const UDP_DISCOVERY_PORT: u16 = 55433; // device discovery (UDP)
 
 pub struct SecureChannel {
     pub key: [u8; 32],
@@ -117,7 +127,7 @@ pub async fn secure_read(
 
     let frame_len = u32::from_be_bytes(len);
 
-    const MAX_FRAME: u32 = 1024 * 1024;
+    const MAX_FRAME: u32 = 1024 * 1024 * 64;
     if frame_len > MAX_FRAME {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -141,7 +151,7 @@ pub async fn secure_read(
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid header"))?;
     let (msg_type, payload_len) = parse_header(header);
 
-    if decrypted_payload.len() != HEADER_SIZE + payload_len as usize {
+    if decrypted_payload.len() as u64 != HEADER_SIZE as u64 + payload_len {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "payload too short",

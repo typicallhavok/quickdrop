@@ -17,7 +17,7 @@ pub enum State {
     Rejected,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TrustedDevice {
     pub name: String,
     pub public_key: String,
@@ -65,12 +65,7 @@ pub fn is_trusted(shared_store: Arc<Mutex<Store>>, public_key: &[u8]) -> bool {
     store.devices.contains_key(&device_id(public_key))
 }
 
-pub fn add_trusted(
-    shared_store: &Arc<Mutex<Store>>,
-    public_key: &[u8],
-    name: &str,
-    path: &str,
-) {
+pub fn add_trusted(shared_store: &Arc<Mutex<Store>>, public_key: &[u8], name: &str, path: &str) {
     let mut store = shared_store.lock().unwrap();
 
     if !store.devices.contains_key(&device_id(public_key)) {

@@ -1,6 +1,6 @@
 use aes_gcm::{
     Aes256Gcm, Nonce,
-    aead::{Aead, AeadCore, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
 };
 use hkdf::Hkdf;
 use sha2::Sha256;
@@ -8,7 +8,21 @@ use std::io;
 
 use crate::identity::NONCE_SIZE;
 
-pub fn derive_session_key(server_nonce: &[u8; NONCE_SIZE], client_nonce: &[u8; NONCE_SIZE], our_pub: &[u8; 32], peer_pub: &[u8; 32]) -> [u8; 32] {
+pub type Aes256Ctr = ctr::Ctr128BE<aes::Aes256>;
+
+pub fn create_stream_cipher(key: &[u8; 32], counter: u64) -> Aes256Ctr {
+    use ctr::cipher::KeyIvInit;
+    let mut iv = [0u8; 16];
+    iv[8..16].copy_from_slice(&counter.to_be_bytes());
+    Aes256Ctr::new(key.into(), &iv.into())
+}
+
+pub fn derive_session_key(
+    server_nonce: &[u8; NONCE_SIZE],
+    client_nonce: &[u8; NONCE_SIZE],
+    our_pub: &[u8; 32],
+    peer_pub: &[u8; 32],
+) -> [u8; 32] {
     let (pk1, pk2) = if our_pub <= peer_pub {
         (our_pub, peer_pub)
     } else {
@@ -28,7 +42,7 @@ pub fn derive_session_key(server_nonce: &[u8; NONCE_SIZE], client_nonce: &[u8; N
     key
 }
 
-pub fn encrypt(key: &[u8; 32], counter:u64, plaintext: &[u8]) -> Vec<u8> {
+pub fn encrypt(key: &[u8; 32], counter: u64, plaintext: &[u8]) -> Vec<u8> {
     let cipher = Aes256Gcm::new_from_slice(key).unwrap();
     let mut nonce_bytes = [0u8; 12];
     nonce_bytes[4..].copy_from_slice(&counter.to_be_bytes());
@@ -42,8 +56,7 @@ pub fn encrypt(key: &[u8; 32], counter:u64, plaintext: &[u8]) -> Vec<u8> {
     out
 }
 
-pub fn decrypt(key: &[u8; 32], counter:u64, data: &[u8]) -> io::Result<Vec<u8>> {
-
+pub fn decrypt(key: &[u8; 32], counter: u64, data: &[u8]) -> io::Result<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(key).unwrap();
     let mut nonce_bytes = [0u8; 12];
     nonce_bytes[4..].copy_from_slice(&counter.to_be_bytes());

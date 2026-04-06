@@ -1,0 +1,85 @@
+.page { padding: 22px 24px; max-width: 680px; }
+
+  /* ── Transfers ── */
+  .transfer-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .t-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    transition: border-color 0.15s;
+  }
+  .t-card:hover { border-color: var(--border-2); }
+
+  .t-row { display: flex; align-items: center; gap: 12px; }
+
+  .t-icon {
+    width: 30px; height: 30px;
+    border-radius: var(--r-sm);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .t-icon svg { width: 13px; height: 13px; }
+  .t-send { background: rgba(77,  123, 254, 0.10); color: var(--send); }
+  .t-recv { background: rgba(167, 139, 250, 0.10); color: var(--recv); }
+
+  .t-info { flex: 1; min-width: 0; }
+  .t-name { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-sub  { font-size: 11px; color: var(--text-2); }
+
+  .t-status { flex-shrink: 0; }
+
+  .t-progress { margin-top: 10px; }
+  .t-bytes { display: block; font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; margin-top: 5px; }
+
+  /* ── Device card transfer progress ── */
+  .device-card { overflow: hidden; }
+
+  .device-transfer-status {
+    border-top: 1px solid var(--border);
+    animation: fade-up 0.18s ease forwards;
+  }
+
+  .device-transfer-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+  }
+
+  .device-transfer-pct {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .device-transfer-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--success);
+  }
+
+  .device-transfer-error {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--error);
+  }
+
+  .device-transfer-bytes {
+    display: block;
+    font-size: 10px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    margin-top: 4px;
+  }

@@ -1,0 +1,46 @@
+.page { padding: 22px 24px; max-width: 560px; }
+
+  .count-pill {
+    font-size: 11px;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 1px 8px;
+    border-radius: 100px;
+  }
+
+  .device-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .d-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    transition: border-color 0.15s;
+  }
+  .d-card:hover { border-color: var(--border-2); }
+
+  .avatar {
+    width: 36px; height: 36px;
+    background: var(--accent-muted);
+    color: var(--accent);
+    border-radius: var(--r-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .d-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .d-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .d-key  {
+    font-size: 11px;
+    color: var(--text-3);
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: text;
+  }
