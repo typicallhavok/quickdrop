@@ -400,11 +400,17 @@
                         <p>
                             Because transfers stay on your own network and skip
                             the internet round-trip, Quickdrop moves at the
-                            speed of your hardware — not your upload plan. Tuned
-                            socket buffers and large streaming chunks keep the
-                            connection saturated from start to finish.
+                            speed of your hardware — not your upload plan. The
+                            transfer engine is written in Rust, so it stays fast
+                            and memory-safe with no garbage-collection pauses.
+                            Tuned socket buffers and large streaming chunks keep
+                            the connection saturated from start to finish.
                         </p>
                         <ul class="perf-points">
+                            <li>
+                                Native engine written in Rust — no runtime
+                                overhead, no GC pauses
+                            </li>
                             <li>
                                 Streams in large chunks with a parallel
                                 reader/writer pipeline
