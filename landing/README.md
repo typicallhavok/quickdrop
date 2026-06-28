@@ -9,10 +9,10 @@ landing/
 ├── styles.css      # styles (one accent color, no gradients)
 ├── script.js       # mobile nav, footer year, subtle reveal-on-scroll
 ├── downloads/
-│   ├── quickdrop_0.1.0_x64-setup.exe   # Windows NSIS installer
-│   ├── quickdrop_0.1.0_x64_en-US.msi   # Windows MSI
+│   ├── quickdrop_0.2.0_x64-setup.exe   # Windows NSIS installer
+│   ├── quickdrop_0.2.0_x64_en-US.msi   # Windows MSI
 │   └── android/
-│       └── quickdrop.apk               # Android app
+│       └── quickdrop_020.apk               # Android app
 └── README.md
 ```
 

@@ -21,9 +21,9 @@ or use the direct links below.
 
 | Platform | File | Requirements |
 |----------|------|--------------|
-| Windows (installer) | [`quickdrop_0.1.0_x64-setup.exe`](https://github.com/typicallhavok/quickdrop/releases/latest/download/quickdrop_0.1.0_x64-setup.exe) | Windows 10 / 11, 64-bit |
-| Windows (MSI) | [`quickdrop_0.1.0_x64_en-US.msi`](https://github.com/typicallhavok/quickdrop/releases/latest/download/quickdrop_0.1.0_x64_en-US.msi) | Windows 10 / 11, 64-bit |
-| Android (APK) | [`quickdrop.apk`](https://github.com/typicallhavok/quickdrop/releases/latest/download/quickdrop.apk) | Android 8.0+ (sideload) |
+| Windows (installer) | [`quickdrop_0.2.0_x64-setup.exe`](https://github.com/typicallhavok/quickdrop/releases/latest/download/quickdrop_0.2.0_x64-setup.exe) | Windows 10 / 11, 64-bit |
+| Windows (MSI) | [`quickdrop_0.2.0_x64_en-US.msi`](https://github.com/typicallhavok/quickdrop/releases/latest/download/quickdrop_0.2.0_x64_en-US.msi) | Windows 10 / 11, 64-bit |
+| Android (APK) | [`quickdrop_020.apk`](https://github.com/typicallhavok/quickdrop/releases/latest/download/quickdrop_020.apk) | Android 8.0+ (sideload) |
 
 The Windows installer (`.exe`) is recommended for most users. The Android app is
 sideloaded — it isn't on the Play Store, so you may need to allow installs from
