@@ -24,11 +24,24 @@ pub const FILE_OFFER: u8 = 0x23;
 pub const OFFER_ACCEPT: u8 = 0x24;
 pub const OFFER_REJECT: u8 = 0x25;
 
+/// Push clipboard text to the peer. Payload is the UTF-8 clipboard contents.
+/// Sent over the secure channel after the handshake, without a file offer; the
+/// receiver copies it into its system clipboard and notifies the user.
+pub const CLIPBOARD: u8 = 0x30;
+
 pub const FILE_CHUNK_SIZE: usize = 4 * 1024 * 1024;
 
-pub const BLE_UUID: u128 = uuid!("00001d09-0000-1000-8000-00805f9b34fb").as_u128();
-pub const WIFI_INFO_UUID: u128 = uuid!("00001d0a-0000-1000-8000-00805f9b34fb").as_u128();
-pub const WIFIDIRECT_INFO_UUID: u128 = uuid!("00001d0b-0000-1000-8000-00805f9b34fb").as_u128();
+/// Below this many already-received bytes, restart an interrupted transfer from
+/// scratch instead of resuming — the time saved by resuming isn't worth it.
+pub const RESUME_MIN_BYTES: u64 = 8 * 1024 * 1024;
+/// When resuming, rewind this many bytes and re-receive them so a torn write at
+/// the tail of the partial file is overwritten rather than blindly trusted.
+pub const RESUME_REWIND_BYTES: u64 = 1024 * 1024;
+
+pub const BLE_UUID: u128 = uuid!("00001d09-0000-1000-8000-00805f9b34fc").as_u128();
+pub const WIFI_INFO_UUID: u128 = uuid!("00001d0a-0000-1000-8000-00805f9b34fc").as_u128();
+pub const WIFIDIRECT_INFO_UUID: u128 = uuid!("00001d0b-0000-1000-8000-00805f9b34fc").as_u128();
+pub const WIFIDIRECT_CONTROL_UUID: u128 = uuid!("00001d0c-0000-1000-8000-00805f9b34fc").as_u128();
 
 pub const TCP_PORT: u16 = 55432; // file transfer (TCP)
 pub const UDP_DISCOVERY_PORT: u16 = 55433; // device discovery (UDP)

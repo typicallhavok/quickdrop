@@ -2,6 +2,9 @@ export interface Settings {
   local_name: string;
   download_dir: string;
   run_in_tray: boolean;
+  /** Resume interrupted transfers from their partial file. When false, a fresh
+   *  file is received instead (saved with a " (n)" suffix). */
+  resume_transfers: boolean;
   port?: number;
 }
 
@@ -13,7 +16,7 @@ export interface Transfer {
   direction: 'send' | 'receive';
   peer_name: string;
   peer_ip: string;
-  status: 'pending' | 'active' | 'done' | 'error' | 'rejected';
+  status: 'pending' | 'active' | 'done' | 'error' | 'rejected' | 'cancelled';
   speed_bps?: number;
 }
 

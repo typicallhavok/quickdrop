@@ -7,7 +7,7 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
-  import { loadDiscoveredDevices, sendFileCmd } from '$lib/tauri';
+  import { loadDiscoveredDevices, sendFileCmd, revealInFolder, sendClipboard, pushToast } from '$lib/tauri';
 
   interface SelectedFile {
     name: string;
@@ -122,6 +122,22 @@
       console.error("Failed to cancel transfer", e);
     }
   }
+
+  async function sendClipboardToDevice(deviceId: string) {
+    try {
+      await sendClipboard(deviceId);
+    } catch (e) {
+      console.error("Failed to send clipboard", e);
+      pushToast('Failed to send clipboard');
+    }
+  }
+
+  /** Transfers shown in the Activity panel: everything not already shown inline
+   *  on a discovered-device card (i.e. incoming/received transfers, and sends to
+   *  devices that have gone offline). Most recent first. */
+  const activityTransfers = $derived(
+    $transfers.filter(t => !$discoveredDevices.some(d => d.id === t.peer_ip || d.id === t.peer_name))
+  );
 </script>
 
 <header class="bg-[#0E0E0E] flex justify-between items-center w-full px-6 h-16 z-50">
@@ -170,6 +186,60 @@
     </button>
   </div>
 {/each}
+
+{#if activityTransfers.length > 0}
+  <h2 class="text-[1.375rem] font-bold mt-8 mb-4 tracking-tight text-on-surface">Activity</h2>
+  <div class="space-y-3">
+    {#each activityTransfers as transfer (transfer.id)}
+      <div class="bg-surface-container p-3 rounded border border-outline-variant/10">
+        <div class="flex items-center justify-between mb-2 gap-2">
+          <span class="text-[0.8125rem] font-medium text-on-surface truncate">{transfer.file_name}</span>
+          {#if transfer.status === 'active'}
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-[#00E5FF] text-xs font-bold">{pct(transfer.bytes_done, transfer.file_size)}%</span>
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_interactive_supports_focus -->
+              <div role="button" class="text-error hover:bg-error/20 p-1 rounded-full transition-colors flex items-center" title="Cancel Transfer" onclick={() => cancelTransfer(transfer.id)}>
+                <span class="material-symbols-outlined" style="font-size: 16px;">close</span>
+              </div>
+            </div>
+          {:else if transfer.status === 'done'}
+            <button class="flex items-center gap-1 text-[#00E5FF] text-[0.6875rem] font-bold hover:underline shrink-0" title="Open containing folder" onclick={() => revealInFolder(transfer.direction === 'receive' ? transfer.file_name : undefined)}>
+              <span class="material-symbols-outlined" style="font-size: 14px;">folder_open</span>
+              Open
+            </button>
+          {:else if transfer.status === 'error'}
+            <span class="device-transfer-error shrink-0">
+              <span class="material-symbols-outlined" style="font-size: 14px;">error</span>
+              Failed
+            </span>
+          {:else if transfer.status === 'cancelled'}
+            <span class="device-transfer-error shrink-0" style="opacity:0.7">
+              <span class="material-symbols-outlined" style="font-size: 14px;">cancel</span>
+              Cancelled
+            </span>
+          {/if}
+        </div>
+        <div class="progress-track">
+          <div
+            class="progress-fill {transfer.direction === 'receive' ? 'recv' : ''} {transfer.status === 'done' ? 'done' : ''} {transfer.status === 'error' ? 'error' : ''} {transfer.status === 'cancelled' ? 'cancelled' : ''}"
+            style="width: {transfer.status === 'done' || transfer.status === 'error' || transfer.status === 'cancelled' ? 100 : pct(transfer.bytes_done, transfer.file_size)}%"
+          ></div>
+        </div>
+        <div class="flex justify-between items-center w-full mt-2">
+          <span class="text-[0.6875rem] uppercase tracking-widest text-on-surface-variant">
+            {transfer.direction === 'receive' ? 'From' : 'To'} {transfer.peer_name}
+          </span>
+          {#if transfer.status === 'active' && transfer.speed_bps}
+            <span class="text-xs font-bold text-[#00E5FF]">{formatBytes(transfer.speed_bps)}/s</span>
+          {:else}
+            <span class="text-[0.6875rem] text-on-surface-variant">{formatBytes(transfer.bytes_done)} / {formatBytes(transfer.file_size)}</span>
+          {/if}
+        </div>
+      </div>
+    {/each}
+  </div>
+{/if}
 </div>
 <!-- Drop Zone Area -->
 <div class="mt-auto pt-10">
@@ -207,11 +277,23 @@
           <div class="text-[0.6875rem] tracking-widest uppercase text-[#00E5FF] mt-0.5">Nearby</div>
         </div>
       </div>
-      {#if getDeviceTransfers(device.id).length === 0}
-        <span class="material-symbols-outlined text-primary-container opacity-0 group-hover:opacity-100 transition-opacity">
-          send
-        </span>
-      {/if}
+      <div class="flex items-center gap-1">
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_interactive_supports_focus -->
+        <div
+          role="button"
+          title="Send clipboard text to this device"
+          class="text-on-surface-variant hover:text-[#00E5FF] hover:bg-[#00E5FF]/10 p-2 rounded-lg transition-colors flex items-center"
+          onclick={(e) => { e.stopPropagation(); sendClipboardToDevice(device.id); }}
+        >
+          <span class="material-symbols-outlined" style="font-size: 20px;">content_paste_go</span>
+        </div>
+        {#if getDeviceTransfers(device.id).length === 0}
+          <span class="material-symbols-outlined text-primary-container opacity-0 group-hover:opacity-100 transition-opacity">
+            send
+          </span>
+        {/if}
+      </div>
     </div>
     <!-- Transfer Progress Area -->
     {#each getDeviceTransfers(device.id).slice(0, 5) as transfer}
@@ -237,12 +319,17 @@
               <span class="material-symbols-outlined" style="font-size: 14px;">error</span>
               Failed
             </span>
+          {:else if transfer.status === 'cancelled'}
+            <span class="device-transfer-error" style="opacity:0.7">
+              <span class="material-symbols-outlined" style="font-size: 14px;">cancel</span>
+              Cancelled
+            </span>
           {/if}
         </div>
         <div class="progress-track">
           <div
-            class="progress-fill {transfer.direction === 'receive' ? 'recv' : ''} {transfer.status === 'done' ? 'done' : ''} {transfer.status === 'error' ? 'error' : ''}"
-            style="width: {transfer.status === 'done' ? 100 : transfer.status === 'error' ? 100 : pct(transfer.bytes_done, transfer.file_size)}%"
+            class="progress-fill {transfer.direction === 'receive' ? 'recv' : ''} {transfer.status === 'done' ? 'done' : ''} {transfer.status === 'error' ? 'error' : ''} {transfer.status === 'cancelled' ? 'cancelled' : ''}"
+            style="width: {transfer.status === 'done' || transfer.status === 'error' || transfer.status === 'cancelled' ? 100 : pct(transfer.bytes_done, transfer.file_size)}%"
           ></div>
         </div>
         {#if transfer.status === 'active'}

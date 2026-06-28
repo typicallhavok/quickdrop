@@ -8,6 +8,7 @@
     local_name: '',
     download_dir: './downloads',
     run_in_tray: false,
+    resume_transfers: true,
     port: 52341
   });
 
@@ -83,12 +84,30 @@
             <!-- Custom Toggle -->
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_interactive_supports_focus -->
-            <div 
+            <div
               class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer {form.run_in_tray ? 'bg-[#00E5FF]' : 'bg-surface-container-highest'}"
               role="switch"
               aria-checked={form.run_in_tray}
               onclick={() => { form.run_in_tray = !form.run_in_tray; }}>
               <span class="inline-block h-4 w-4 transform rounded-full bg-[#0E0E0E] transition-transform {form.run_in_tray ? 'translate-x-6' : 'translate-x-1'}"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl p-6 shadow-xl backdrop-blur-sm mt-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-[1rem] font-semibold text-on-surface">Resume Interrupted Transfers</div>
+              <div class="text-sm text-on-surface-variant mt-1">Continue from where a cancelled transfer left off. When off, a new file is created with a (n) suffix instead.</div>
+            </div>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_interactive_supports_focus -->
+            <div
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer {form.resume_transfers ? 'bg-[#00E5FF]' : 'bg-surface-container-highest'}"
+              role="switch"
+              aria-checked={form.resume_transfers}
+              onclick={() => { form.resume_transfers = !form.resume_transfers; }}>
+              <span class="inline-block h-4 w-4 transform rounded-full bg-[#0E0E0E] transition-transform {form.resume_transfers ? 'translate-x-6' : 'translate-x-1'}"></span>
             </div>
           </div>
         </div>

@@ -2,8 +2,32 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { get } from 'svelte/store';
 import type { Settings, Transfer, IncomingOffer, Device, DiscoveredDevice } from './types';
-import { transfers, incomingOffers, devices, localIp, settings, discoveredDevices } from './stores';
+import { transfers, incomingOffers, devices, localIp, settings, discoveredDevices, toasts } from './stores';
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+let toastSeq = 0;
+/** Show a transient toast message (auto-dismisses). */
+export function pushToast(message: string): void {
+  const id = ++toastSeq;
+  toasts.update(t => [...t, { id, message }]);
+  setTimeout(() => toasts.update(t => t.filter(x => x.id !== id)), 4000);
+}
+
+/** Read the system clipboard and push its text to a peer's clipboard. */
+export async function sendClipboard(deviceId: string): Promise<void> {
+  if (!isTauri) {
+    alert('Would send clipboard to ' + deviceId);
+    return;
+  }
+  const { readText } = await import('@tauri-apps/plugin-clipboard-manager');
+  const text = await readText();
+  if (!text || text.length === 0) {
+    pushToast('Clipboard is empty');
+    return;
+  }
+  await invoke('send_clipboard_cmd', { targetId: deviceId, text });
+  pushToast('Clipboard sent');
+}
 
 export async function loadDiscoveredDevices(): Promise<void> {
   if (!isTauri) {
@@ -108,13 +132,25 @@ export async function trustAndAcceptTransfer(transferId: string): Promise<void> 
 }
 
 export async function openDownloads(): Promise<void> {
-  const { download_dir } = get(settings);
   if (!isTauri) {
-    alert("Would open downloads folder: " + download_dir);
+    alert("Would open downloads folder: " + get(settings).download_dir);
     return;
   }
-  const { openPath } = await import('@tauri-apps/plugin-opener');
-  await openPath(download_dir);
+  await invoke('reveal_in_folder', { fileName: null });
+}
+
+/** Reveal a received file (highlighted) in the OS file manager, or the
+ *  download folder if no name / the file isn't there. */
+export async function revealInFolder(fileName?: string): Promise<void> {
+  if (!isTauri) {
+    alert("Would reveal: " + (fileName ?? get(settings).download_dir));
+    return;
+  }
+  try {
+    await invoke('reveal_in_folder', { fileName: fileName ?? null });
+  } catch (e) {
+    console.warn("Failed to reveal in folder:", e);
+  }
 }
 
 export async function pickFile(): Promise<string | null> {
@@ -182,12 +218,24 @@ export function setupListeners(): void {
       const idx = list.findIndex(t => t.id === event.payload.id);
       if (idx < 0) return list;
       const copy = [...list];
-      copy[idx] = { ...event.payload, status: 'error' };
+      // Respect the backend status so a user cancel shows as 'cancelled', not 'error'.
+      copy[idx] = { ...event.payload, status: event.payload.status === 'cancelled' ? 'cancelled' : 'error' };
       return copy;
     });
   }).catch(err => console.warn("Tauri event listener failed:", err));
 
   listen<IncomingOffer>('incoming-offer', (event) => {
     incomingOffers.update(o => [event.payload, ...o]);
+  }).catch(err => console.warn("Tauri event listener failed:", err));
+
+  // A peer pushed clipboard text — write it into our system clipboard and toast.
+  listen<{ text: string; peer_name: string }>('clipboard-received', async (event) => {
+    try {
+      const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
+      await writeText(event.payload.text);
+      pushToast(`Clipboard copied from ${event.payload.peer_name}`);
+    } catch (e) {
+      console.warn("Failed to write received clipboard:", e);
+    }
   }).catch(err => console.warn("Tauri event listener failed:", err));
 }

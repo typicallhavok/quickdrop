@@ -103,7 +103,7 @@ pub async fn run_client_handshake<'a>(
     _store_path: &'a str,
     local_public_key: &[u8; 32],
     local_name: &str,
-) -> io::Result<[u8; 32]> {
+) -> io::Result<([u8; 32], [u8; 32])> {
     let mut ctx = HandshakeContext::new(store, *local_public_key, local_name);
 
     let client_nonce = generate_nonce();
@@ -158,7 +158,7 @@ pub async fn run_client_handshake<'a>(
         &peer_public_key,
     );
 
-    Ok(session_key)
+    Ok((session_key, peer_public_key))
 }
 
 fn handle_identity_hello(

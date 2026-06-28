@@ -8,6 +8,12 @@ use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
+/// Large TCP socket buffers (4 MiB). On high-bandwidth, non-trivial-latency
+/// links (Wi-Fi / Wi-Fi Direct) the default ~64 KiB window caps throughput far
+/// below the link rate. Sizing the send/recv buffers lets the TCP window grow
+/// so the network — not the kernel buffer — is the limit.
+pub const SOCKET_BUFFER_SIZE: usize = 4 * 1024 * 1024;
+
 /// Configure TCP socket for large, sustained transfers.
 pub fn configure_socket_for_transfer(stream: &TcpStream) {
     use socket2::Socket;
@@ -18,12 +24,48 @@ pub fn configure_socket_for_transfer(stream: &TcpStream) {
 
     let _ = stream.set_nodelay(true);
 
+    // Enlarge the kernel socket buffers so the TCP window can open up.
+    let _ = sock.set_send_buffer_size(SOCKET_BUFFER_SIZE);
+    let _ = sock.set_recv_buffer_size(SOCKET_BUFFER_SIZE);
+
     let keepalive = socket2::TcpKeepalive::new()
         .with_time(std::time::Duration::from_secs(15))
         .with_interval(std::time::Duration::from_secs(10));
     let _ = sock.set_tcp_keepalive(&keepalive);
 
     std::mem::forget(sock);
+}
+
+/// Find a name that collides with neither an existing final file nor an
+/// existing `.unconfirmed` partial, inserting " (n)" before the extension as
+/// needed. Used when resume is disabled so a fresh file is always created.
+fn unique_base_name(dir: &Path, name: &str) -> String {
+    fn is_free(dir: &Path, cand: &str) -> bool {
+        !dir.join(cand).exists() && !dir.join(format!("{}.unconfirmed", cand)).exists()
+    }
+    if is_free(dir, name) {
+        return name.to_string();
+    }
+    let p = Path::new(name);
+    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let ext_str = if ext.is_empty() {
+        String::new()
+    } else {
+        format!(".{}", ext)
+    };
+    let stem = p
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(name)
+        .to_string();
+    let mut i = 1;
+    loop {
+        let cand = format!("{} ({}){}", stem, i, ext_str);
+        if is_free(dir, &cand) {
+            return cand;
+        }
+        i += 1;
+    }
 }
 
 pub async fn offer_and_send_file<F>(
@@ -160,11 +202,15 @@ pub async fn receive_file<F>(
     path: &Path,
     expected_size: u64,
     expected_name: &str,
+    resume: bool,
+    resume_offset: u64,
     on_progress: F,
 ) -> io::Result<()>
 where
     F: Fn(u64) -> bool + Send + Sync,
 {
+    configure_socket_for_transfer(stream);
+
     let (msg_type, payload) = match secure_read(stream, channel).await {
         Ok((msg_type, payload)) => (msg_type, payload),
         Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
@@ -205,24 +251,41 @@ where
         ));
     }
 
-    let unconfirmed_path = path.join(file_name.clone() + ".unconfirmed");
-    let mut final_path = path.join(file_name);
-
     let _ = fs::create_dir_all(path).await;
 
-    let existing_length = fs::metadata(&unconfirmed_path)
-        .await
-        .map(|m| m.len())
-        .unwrap_or(0);
+    // Decide the on-disk name. With resume enabled (default) we reuse the
+    // existing `<name>.unconfirmed` partial and continue into it. With resume
+    // disabled, pick a fresh unique base so an interrupted partial is never
+    // appended to — the result always lands as a new file (with a " (n)" suffix
+    // when a file or partial of that name already exists).
+    let base_name = if resume {
+        file_name.clone()
+    } else {
+        unique_base_name(path, &file_name)
+    };
+
+    let unconfirmed_path = path.join(format!("{}.unconfirmed", base_name));
+    let mut final_path = path.join(&base_name);
+
+    // The resume point was negotiated at accept time and sent to the sender, who
+    // streams exactly `file_size - resume_offset` body bytes. Treat that offset
+    // as authoritative and force the partial file to exactly that length, rather
+    // than recomputing it from the on-disk length here. The two can disagree
+    // (e.g. if the accept-time truncation didn't persist), and any mismatch makes
+    // us read the wrong number of body bytes — corrupting the FILE_END frame,
+    // throwing, and aborting the transfer (which shows as a failure on the
+    // sender). Forcing the length keeps both sides in lock-step.
+    let existing_length = if resume { resume_offset } else { 0 };
     let total_expected_size = file_size;
     let bytes_to_receive = file_size.saturating_sub(existing_length);
 
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
-        .append(true)
         .open(&unconfirmed_path)
         .await?;
+    file.set_len(existing_length).await?;
+    file.seek(std::io::SeekFrom::Start(existing_length)).await?;
 
     let mut remaining = bytes_to_receive;
     let mut bytes_received: u64 = 0;
