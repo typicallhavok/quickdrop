@@ -1,8 +1,7 @@
 use crate::{
     identity::{Store, add_trusted, is_trusted},
     protocol::{
-        CLIPBOARD, FILE_OFFER, FILE_UPLOAD, OFFER_ACCEPT, OFFER_REJECT, TCP_PORT, SecureChannel,
-        WIFI_INFO_UUID, secure_read, secure_write,
+        CLIPBOARD, FILE_OFFER, FILE_UPLOAD, OFFER_ACCEPT, OFFER_REJECT, TCP_PORT, SecureChannel, secure_read, secure_write,
     },
     transfer::receive_file,
 };
@@ -17,13 +16,7 @@ use std::{
 };
 use tokio::net::TcpStream;
 use uuid::Uuid;
-use windows::{
-    Devices::{
-        Enumeration::DeviceInformation,
-        WiFiDirect::WiFiDirectDevice,
-    },
-    Foundation::TypedEventHandler,
-};
+use windows::Devices::WiFiDirect::WiFiDirectDevice;
 
 static ACTIVE_WIFI_DEVICES: std::sync::OnceLock<Mutex<Vec<WiFiDirectDevice>>> =
     std::sync::OnceLock::new();
