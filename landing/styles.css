@@ -151,6 +151,12 @@ a { color: inherit; text-decoration: none; }
   border-color: var(--line);
 }
 .btn-secondary:hover { border-color: #343a42; background: var(--elevated); }
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-soft);
+  border-color: var(--line);
+}
+.btn-ghost:hover { border-color: #343a42; color: var(--ink); background: var(--bg-soft); }
 
 /* ── Hero ─────────────────────────────────────────────────── */
 .hero {
@@ -398,6 +404,7 @@ a { color: inherit; text-decoration: none; }
 .download-more { margin-top: 14px; font-size: 0.9375rem; }
 .download-more a { color: var(--accent-ink); text-decoration: none; }
 .download-more a:hover { text-decoration: underline; }
+.download-releases { margin-top: 20px; }
 
 /* ── Download page ────────────────────────────────────────── */
 .dl-head {
@@ -417,6 +424,8 @@ a { color: inherit; text-decoration: none; }
   font-size: 0.8125rem;
   font-weight: 600;
 }
+.dl-head-actions { margin-top: 22px; }
+.dl-head-actions .btn { padding: 11px 20px; }
 .dl-platform {
   padding-top: 28px;
   padding-bottom: 4px;
