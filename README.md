@@ -78,7 +78,7 @@ Under the hood, Quickdrop uses a custom binary protocol:
 ## Project structure
 
 ```
-share/                    # this repository — desktop app + core engine
+share/                    # this repository — desktop app + Android app + core engine
 ├── backend/              # core P2P engine (Rust library)
 │   └── src/
 │       ├── protocol.rs   # wire protocol, ports, framing
@@ -92,12 +92,13 @@ share/                    # this repository — desktop app + core engine
 │       └── state.rs      # shared app state
 ├── frontend/             # desktop GUI (Tauri 2 + SvelteKit + Rust)
 │   └── src-tauri/        # Tauri shell wrapping the backend engine
+├── android/              # Android app (Kotlin + Jetpack Compose)
 ├── landing/              # static marketing / download site (HTML/CSS/JS)
 └── README.md
 ```
 
-The **Android app** lives in a separate repository (`sharedroid/`), written in
-Kotlin. It speaks the exact same wire protocol, so any change to discovery or the
+The **Android app** lives in [`android/`](android/), written in Kotlin. It speaks
+the exact same wire protocol as the desktop app, so any change to discovery or the
 transfer protocol must be mirrored on both sides.
 
 ---
@@ -133,9 +134,9 @@ Built installers land in `frontend/src-tauri/target/release/bundle/`
 
 ### Android app
 
-Build the signed release APK from the `sharedroid` project in Android Studio
-(or `./gradlew assembleRelease`). The output APK is what gets published to the
-Releases page.
+Build the signed release APK from the `android/` project in Android Studio
+(or `cd android && ./gradlew assembleRelease`). The output APK is what gets
+published to the Releases page.
 
 ### Landing page
 
