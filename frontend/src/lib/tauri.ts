@@ -187,6 +187,14 @@ export async function pickDirectory(): Promise<string | null> {
   }
 }
 
+/** Remove a transfer row from the store after a short delay so terminal
+ *  (cancelled / failed) rows clear themselves instead of lingering. */
+function scheduleTransferRemoval(id: string, delay = 2000): void {
+  setTimeout(() => {
+    transfers.update(list => list.filter(t => t.id !== id));
+  }, delay);
+}
+
 /** Wire up backend → UI event listeners. Call once at app startup. */
 export function setupListeners(): void {
   if (!isTauri) return;
@@ -211,6 +219,8 @@ export function setupListeners(): void {
       copy[idx] = { ...event.payload, status: 'done' };
       return copy;
     });
+    // Clear completed (sent/received) rows after 2s, same as cancelled/failed.
+    scheduleTransferRemoval(event.payload.id);
   }).catch(err => console.warn("Tauri event listener failed:", err));
 
   listen<Transfer>('transfer-error', (event) => {
@@ -222,6 +232,8 @@ export function setupListeners(): void {
       copy[idx] = { ...event.payload, status: event.payload.status === 'cancelled' ? 'cancelled' : 'error' };
       return copy;
     });
+    // Let the cancelled/failed row sit for 2s, then clear it from the list.
+    scheduleTransferRemoval(event.payload.id);
   }).catch(err => console.warn("Tauri event listener failed:", err));
 
   listen<IncomingOffer>('incoming-offer', (event) => {

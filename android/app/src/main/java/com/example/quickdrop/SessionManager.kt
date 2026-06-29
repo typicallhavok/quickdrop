@@ -126,8 +126,17 @@ class SessionManager(
             }
             val transferId = System.currentTimeMillis().toString() + "-" + name
             withContext(Dispatchers.Main) {
-                if (viewModel.transfers.value.none { it.fileName == name && it.peerName == peerName }) {
-                    viewModel.addOutgoingTransfer(transferId, name, size, peerName, "Automating connection...")
+                // Only skip if an in-flight transfer of this file is already running;
+                // a finished/cancelled one (still briefly shown before it fades) must
+                // not block resending the same file.
+                val alreadyInFlight = viewModel.transfers.value.any {
+                    it.fileName == name && it.peerName == peerName &&
+                        (it.status == TransferStatus.ACTIVE || it.status == TransferStatus.PENDING)
+                }
+                if (!alreadyInFlight) {
+                    // Use the real peer IP so the transfer shows under that device's
+                    // card (matched by peerIp), not in a separate list.
+                    viewModel.addOutgoingTransfer(transferId, name, size, peerName, ipAddress)
                 }
             }
         }
@@ -414,10 +423,14 @@ class SessionManager(
      * file state set here is what it sees. Returns the offset (0 == fresh).
      */
     private fun prepareResumeOffset(tempFile: File, expectedSize: Long): Long {
-        if (!tempFile.exists()) return 0L
+        if (!tempFile.exists()) {
+            android.util.Log.d("Quickdrop", "[resume] accept: no partial -> fresh (0)")
+            return 0L
+        }
         val existing = tempFile.length()
         // Unusable (corrupt / complete-but-unconfirmed) or too small to bother.
         if (existing == 0L || existing >= expectedSize || existing < Protocol.RESUME_MIN_BYTES) {
+            android.util.Log.d("Quickdrop", "[resume] accept: partial=$existing expected=$expectedSize unusable/too-small -> discard, fresh (0)")
             tempFile.delete()
             return 0L
         }
@@ -426,6 +439,7 @@ class SessionManager(
         val offset = (existing - Protocol.RESUME_REWIND_BYTES).coerceAtLeast(0L)
         return try {
             java.io.RandomAccessFile(tempFile, "rw").use { it.setLength(offset) }
+            android.util.Log.d("Quickdrop", "[resume] accept: partial=$existing expected=$expectedSize -> RESUME from $offset")
             offset
         } catch (_: Exception) {
             tempFile.delete()
@@ -647,6 +661,9 @@ class SessionManager(
 
     private suspend fun receiveFile(session: ActiveSession) {
         var currentFileName: String? = null
+        // Signals the writer thread to stop when the receive is interrupted, so it
+        // doesn't block forever on dataQueue.take() holding the partial file open.
+        val aborted = java.util.concurrent.atomic.AtomicBoolean(false)
 
         try {
             val (msgType, payload) = Transfer.secureRead(session.inStream, session.secureChannel)
@@ -717,11 +734,14 @@ class SessionManager(
                 try {
                     outStream.use { fileOut ->
                         while (true) {
-                            val pair = dataQueue.take()
+                            // Poll (don't block forever) so an interrupted receive
+                            // can tell this thread to stop and release the file.
+                            val pair = dataQueue.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                                ?: if (aborted.get()) break else continue
                             val buf = pair.first
                             val len = pair.second
                             if (len == -1) break
-                            
+
                             cipher.update(buf, 0, len, buf, 0)
                             fileOut.write(buf, 0, len)
                             freeQueue.put(buf)
@@ -781,6 +801,7 @@ class SessionManager(
             if (threadError != null) throw threadError!!
 
             val (endType, endPayload) = Transfer.secureRead(session.inStream, session.secureChannel)
+            android.util.Log.d("Quickdrop", "[resume] receive end: name=$fileName existingLength=$existingLength expected=$fileSize endType=0x${endType.toString(16)} endPayloadLen=${endPayload.size} tempLen=${tempFile.length()}")
             if (endType == Protocol.FILE_END && endPayload.isEmpty()) {
                 if (tempFile.length() == fileSize) {
                     val finalOk = tempFile.renameTo(finalFile)
@@ -799,6 +820,10 @@ class SessionManager(
             }
 
         } catch (e: Exception) {
+            android.util.Log.w("Quickdrop", "[resume] receive failed for ${currentFileName}: ${e.message}")
+            // Release the writer thread so it stops blocking and closes the partial
+            // file handle; otherwise the next send of this file collides with it.
+            aborted.set(true)
             currentFileName?.let { name ->
                 withContext(Dispatchers.Main) {
                     viewModel.markTransferError(name)

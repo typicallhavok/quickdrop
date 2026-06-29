@@ -41,18 +41,37 @@ impl Default for Settings {
     }
 }
 
-/// The default place received files land: a `files` folder next to the
-/// executable (portable). Falls back to the working directory if the exe path
-/// can't be resolved. Created eagerly so the receiver can always write into it.
+/// The default place received files land: a `Quickdrop` folder inside the user's
+/// Downloads directory. This must be a user-writable location — a production
+/// install lives under `C:\Program Files\...`, where a folder next to the exe is
+/// NOT writable, so receiving there fails. Falls back to the home directory, then
+/// the working directory. Created eagerly so the receiver can always write to it.
 fn default_download_dir() -> String {
-    let base = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    let base = dirs::download_dir()
+        .or_else(dirs::home_dir)
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let dir = base.join("files");
+    let dir = base.join("Quickdrop");
     let _ = std::fs::create_dir_all(&dir);
     dir.to_string_lossy().to_string()
+}
+
+/// Whether files can actually be created in `dir`. A path can exist (e.g. inside
+/// `Program Files`) yet reject writes without admin; the receiver needs a place
+/// it can truly write, so we probe by creating and removing a temp file.
+fn is_writable_dir(dir: &str) -> bool {
+    let path = std::path::Path::new(dir);
+    if std::fs::create_dir_all(path).is_err() {
+        return false;
+    }
+    let probe = path.join(".quickdrop_write_test");
+    match std::fs::write(&probe, b"") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -105,19 +124,15 @@ fn get_settings_path() -> String {
 fn load_settings(path: &str) -> Settings {
     if let Ok(data) = std::fs::read_to_string(path) {
         if let Ok(mut s) = serde_json::from_str::<Settings>(&data) {
-            // Migrate previous defaults (placeholder or the OS Downloads folder)
-            // to the new app-local `files` folder. A genuinely custom path is
-            // left untouched.
-            let os_downloads = dirs::download_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
+            // Repair an unusable download dir: a blank/placeholder path, or one
+            // that can't actually be written to (e.g. the old default of a `files`
+            // folder under `Program Files` in a production install, which silently
+            // broke receiving). A genuinely custom, writable path is left as-is.
             if s.download_dir.trim().is_empty()
                 || s.download_dir == "./downloads"
-                || (!os_downloads.is_empty() && s.download_dir == os_downloads)
+                || !is_writable_dir(&s.download_dir)
             {
                 s.download_dir = default_download_dir();
-            } else {
-                let _ = std::fs::create_dir_all(&s.download_dir);
             }
             return s;
         }

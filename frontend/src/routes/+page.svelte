@@ -1,6 +1,7 @@
 <script lang="ts">
   import './page.css';
   import { onMount, onDestroy } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { discoveredDevices, devices, transfers, incomingOffers } from '$lib/stores';
   import { formatBytes, pct } from '$lib/utils';
 
@@ -191,7 +192,7 @@
   <h2 class="text-[1.375rem] font-bold mt-8 mb-4 tracking-tight text-on-surface">Activity</h2>
   <div class="space-y-3">
     {#each activityTransfers as transfer (transfer.id)}
-      <div class="bg-surface-container p-3 rounded border border-outline-variant/10">
+      <div class="bg-surface-container p-3 rounded border border-outline-variant/10" out:fade={{ duration: 400 }}>
         <div class="flex items-center justify-between mb-2 gap-2">
           <span class="text-[0.8125rem] font-medium text-on-surface truncate">{transfer.file_name}</span>
           {#if transfer.status === 'active'}
@@ -260,11 +261,17 @@
   </div>
 {/if}
 {#each $discoveredDevices as device (device.id)}
-  <!-- Device Card -->
-  <button 
+  <!-- Device Card. A clickable <div>, not a <button>: it contains nested
+       interactive controls (clipboard, cancel) which are invalid inside a
+       <button>, and a disabled <button> would swallow their clicks. Sending is
+       guarded in sendToDevice (no-op when no files are selected). -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    role="button"
+    tabindex="0"
     class="device-card bg-surface-container-high rounded flex flex-col hover:bg-surface-container-highest transition-colors cursor-pointer group w-full text-left"
     onclick={() => sendToDevice(device.id)}
-    disabled={selectedFiles.length === 0}
     class:opacity-50={selectedFiles.length === 0}
   >
     <div class="flex items-center justify-between p-6 w-full">
@@ -296,8 +303,8 @@
       </div>
     </div>
     <!-- Transfer Progress Area -->
-    {#each getDeviceTransfers(device.id).slice(0, 5) as transfer}
-      <div class="device-transfer-status px-6 pb-5 w-full border-t border-outline-variant/10 pt-4">
+    {#each getDeviceTransfers(device.id).slice(0, 5) as transfer (transfer.id)}
+      <div class="device-transfer-status px-6 pb-5 w-full border-t border-outline-variant/10 pt-4" out:fade={{ duration: 400 }}>
         <div class="flex items-center justify-between mb-2">
           <span class="device-transfer-name truncate mr-4">{transfer.file_name}</span>
           {#if transfer.status === 'active'}
@@ -346,7 +353,7 @@
         {/if}
       </div>
     {/each}
-  </button>
+  </div>
 {/each}
 </div>
 </section>

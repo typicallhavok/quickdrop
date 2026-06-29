@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -228,6 +229,9 @@ fun QuickDropApp(
     var showSettings by remember { mutableStateOf(false) }
 
     if (showSettings) {
+        // Intercept the system back gesture/button so it returns to the main
+        // screen instead of falling through to the Activity (which closes the app).
+        BackHandler { showSettings = false }
         SettingsScreen(onClose = { showSettings = false })
         return
     }
@@ -436,64 +440,6 @@ fun QuickDropApp(
                 }
             }
 
-            val peerIps = discoveredPeers.map { it.ip }.toSet()
-            val orphanTransfers = transfers.filter { it.peerIp !in peerIps }
-            if (orphanTransfers.isNotEmpty()) {
-                item {
-                    Text(
-                        "ACTIVE TRANSFERS",
-                        color = cyan,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
-                    )
-                }
-                items(orphanTransfers) { transfer ->
-                    val pct = if (transfer.fileSize > 0) ((transfer.bytesDone.toDouble() / transfer.fileSize.toDouble()) * 100).toInt() else 0
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        transfer.fileName,
-                                        color = lightText,
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 14.sp,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        "${if (transfer.direction == TransferDirection.RECEIVE) "From" else "To"} ${transfer.peerName} · ${transfer.status.name}",
-                                        color = iconGray,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                }
-                                Text("${pct}%", color = cyan, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                if (transfer.status == TransferStatus.ACTIVE) {
-                                    IconButton(
-                                        onClick = { viewModel.cancelTransfer(transfer.id) },
-                                        modifier = Modifier.size(28.dp).padding(start = 8.dp)
-                                    ) {
-                                        Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                            LinearProgressIndicator(
-                                progress = { pct / 100f },
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                color = cyan,
-                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                            )
-                        }
-                    }
-                }
-            }
-
             item {
                 Text(
                     "NEARBY DEVICES",
@@ -565,24 +511,36 @@ fun QuickDropApp(
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                 for (transfer in peerTransfers) {
                                     val pct = if (transfer.fileSize > 0) ((transfer.bytesDone.toDouble() / transfer.fileSize.toDouble()) * 100).toInt() else 0
+                                    val inProgress = transfer.status == TransferStatus.ACTIVE || transfer.status == TransferStatus.PENDING
                                     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(transfer.fileName, color = lightText, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1)
-                                        Text("${pct}%", color = cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        if (transfer.status == TransferStatus.ACTIVE) {
-                                            IconButton(
-                                                onClick = { viewModel.cancelTransfer(transfer.id) },
-                                                modifier = Modifier.size(24.dp).padding(start = 8.dp)
-                                            ) {
-                                                Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                        when (transfer.status) {
+                                            TransferStatus.ACTIVE, TransferStatus.PENDING -> {
+                                                Text("${pct}%", color = cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                IconButton(
+                                                    onClick = { viewModel.cancelTransfer(transfer.id) },
+                                                    modifier = Modifier.size(24.dp).padding(start = 8.dp)
+                                                ) {
+                                                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                                }
                                             }
+                                            TransferStatus.DONE -> Text(
+                                                if (transfer.direction == TransferDirection.RECEIVE) "Saved" else "Sent",
+                                                color = cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold
+                                            )
+                                            TransferStatus.ERROR -> Text("Failed", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            TransferStatus.CANCELLED -> Text("Cancelled", color = iconGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            TransferStatus.REJECTED -> Text("Rejected", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-                                    LinearProgressIndicator(
-                                        progress = { pct / 100f },
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                                        color = cyan,
-                                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                                    )
+                                    if (inProgress) {
+                                        LinearProgressIndicator(
+                                            progress = { pct / 100f },
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                                            color = cyan,
+                                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                        )
+                                    }
                                 }
                             }
                         }

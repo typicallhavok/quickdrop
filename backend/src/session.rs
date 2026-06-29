@@ -280,12 +280,19 @@ async fn prepare_resume_offset(download_dir: &std::path::Path, file_name: &str, 
 
     let existing = match tokio::fs::metadata(&unconfirmed_path).await {
         Ok(m) => m.len(),
-        Err(_) => return 0,
+        Err(_) => {
+            eprintln!("[resume] accept: name={} no partial -> fresh (offset 0)", file_name);
+            return 0;
+        }
     };
 
     // Partial is unusable (corrupt / already complete-but-unconfirmed) or too
     // small to be worth resuming: discard it and resend the whole file.
     if existing == 0 || existing >= expected_size || existing < RESUME_MIN_BYTES {
+        eprintln!(
+            "[resume] accept: name={} partial={} expected={} unusable/too-small -> discard, fresh (offset 0)",
+            file_name, existing, expected_size
+        );
         let _ = tokio::fs::remove_file(&unconfirmed_path).await;
         return 0;
     }
@@ -296,12 +303,18 @@ async fn prepare_resume_offset(download_dir: &std::path::Path, file_name: &str, 
     if let Ok(file) = tokio::fs::OpenOptions::new().write(true).open(&unconfirmed_path).await {
         if file.set_len(offset).await.is_err() {
             // Couldn't truncate — safest is to start over.
+            eprintln!("[resume] accept: name={} truncate failed -> fresh (offset 0)", file_name);
             let _ = tokio::fs::remove_file(&unconfirmed_path).await;
             return 0;
         }
     } else {
+        eprintln!("[resume] accept: name={} could not open partial -> fresh (offset 0)", file_name);
         return 0;
     }
+    eprintln!(
+        "[resume] accept: name={} partial={} expected={} -> RESUME from offset {}",
+        file_name, existing, expected_size, offset
+    );
     offset
 }
 

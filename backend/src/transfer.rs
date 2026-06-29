@@ -8,13 +8,14 @@ use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-/// Large TCP socket buffers (4 MiB). On high-bandwidth, non-trivial-latency
-/// links (Wi-Fi / Wi-Fi Direct) the default ~64 KiB window caps throughput far
-/// below the link rate. Sizing the send/recv buffers lets the TCP window grow
-/// so the network — not the kernel buffer — is the limit.
-pub const SOCKET_BUFFER_SIZE: usize = 4 * 1024 * 1024;
-
 /// Configure TCP socket for large, sustained transfers.
+///
+/// We deliberately do NOT pin `SO_SNDBUF`/`SO_RCVBUF` here: on Windows, setting
+/// the receive buffer manually disables TCP receive-window auto-tuning, which
+/// caps throughput at the fixed buffer size instead of letting the window grow
+/// to fill a fast link. Leaving them unset lets Windows auto-tune the window,
+/// which is faster on a normal LAN. We still disable Nagle (low latency for the
+/// small control frames) and enable keepalive (so a dead peer is noticed).
 pub fn configure_socket_for_transfer(stream: &TcpStream) {
     use socket2::Socket;
     use std::os::windows::io::{AsRawSocket, FromRawSocket};
@@ -23,10 +24,6 @@ pub fn configure_socket_for_transfer(stream: &TcpStream) {
     let sock = unsafe { Socket::from_raw_socket(raw) };
 
     let _ = stream.set_nodelay(true);
-
-    // Enlarge the kernel socket buffers so the TCP window can open up.
-    let _ = sock.set_send_buffer_size(SOCKET_BUFFER_SIZE);
-    let _ = sock.set_recv_buffer_size(SOCKET_BUFFER_SIZE);
 
     let keepalive = socket2::TcpKeepalive::new()
         .with_time(std::time::Duration::from_secs(15))
@@ -134,6 +131,14 @@ where
     payload.extend_from_slice(&file_size);
     payload.extend_from_slice(&(file_name.len() as u16).to_be_bytes());
     payload.extend_from_slice(file_name);
+
+    eprintln!(
+        "[resume] send start: name={} total_size={} resume_offset={} will_send={}",
+        file_name_str,
+        total_size,
+        resume_offset,
+        total_size.saturating_sub(resume_offset)
+    );
 
     secure_write(stream, channel, FILE_BEGIN, &payload).await?;
 
@@ -340,11 +345,13 @@ where
     let _ = writer_handle.await;
 
     let (msg_type, payload) = secure_read(stream, channel).await?;
+    let actual_len = fs::metadata(&unconfirmed_path).await?.len();
+    eprintln!(
+        "[resume] receive end: name={} resume={} resume_offset={} existing_length={} expected={} got_msg=0x{:02x} payload_len={} unconfirmed_len={}",
+        expected_name, resume, resume_offset, existing_length, total_expected_size, msg_type, payload.len(), actual_len
+    );
 
-    if msg_type == FILE_END
-        && payload.is_empty()
-        && fs::metadata(&unconfirmed_path).await?.len() == total_expected_size
-    {
+    if msg_type == FILE_END && payload.is_empty() && actual_len == total_expected_size {
         if final_path.exists() {
             let mut i = 1;
             let ext = final_path

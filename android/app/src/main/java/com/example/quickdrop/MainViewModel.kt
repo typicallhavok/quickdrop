@@ -1,10 +1,13 @@
 package com.example.quickdrop
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class TrustPrompt(
     val peerPublicKey: ByteArray,
@@ -97,6 +100,7 @@ class MainViewModel : ViewModel() {
                 } else it
             }
         }
+        scheduleTerminalRemoval()
     }
 
     fun markTransferError(fileName: String) {
@@ -107,6 +111,7 @@ class MainViewModel : ViewModel() {
                 } else it
             }
         }
+        scheduleTerminalRemoval()
     }
     
     fun markTransferActive(fileName: String) {
@@ -168,6 +173,30 @@ class MainViewModel : ViewModel() {
                 } else it
             }
         }
+        scheduleTerminalRemoval()
+    }
+
+    /** Terminal transfers (done/error/cancelled/rejected) shouldn't linger in the
+     *  list — remove each one ~2s after it reaches a terminal state. Idempotent:
+     *  a given id is only scheduled once. */
+    private val scheduledForRemoval = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    private fun scheduleTerminalRemoval() {
+        val terminal = setOf(
+            TransferStatus.DONE,
+            TransferStatus.ERROR,
+            TransferStatus.CANCELLED,
+            TransferStatus.REJECTED
+        )
+        for (t in _transfers.value) {
+            if (t.status in terminal && scheduledForRemoval.add(t.id)) {
+                viewModelScope.launch {
+                    delay(2000)
+                    _transfers.update { list -> list.filter { it.id != t.id } }
+                    scheduledForRemoval.remove(t.id)
+                }
+            }
+        }
     }
 
     fun updateTransferProgress(fileName: String, bytesDone: Long) {
@@ -188,5 +217,6 @@ class MainViewModel : ViewModel() {
                 } else it
             }
         }
+        scheduleTerminalRemoval()
     }
 }
